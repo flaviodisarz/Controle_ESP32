@@ -2,8 +2,6 @@
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# Directory metadata
 .directory
 
 # Temporary files
@@ -17,33 +15,31 @@
 *.log
 
 # Build artifacts and directories
-**/build/
 build/
 *.o
 *.a
 *.out
-*.exe # For any host-side utilities compiled on Windows
+*.exe
 
-# ESP-IDF specific build outputs
-*.bin
-*.elf
-*.map
-flasher_args.json # Generated in build directory
+# ESP-IDF build outputs (only inside build/)
+build/**/*.bin
+build/**/*.elf
+build/**/*.map
+build/**/flasher_args.json
+
+# ESP-IDF specific
 sdkconfig.old
 # Quero versionar a config do projeto
 !sdkconfig
 !sdkconfig.defaults
 
 # ESP-IDF dependencies
-# For older versions or manual component management
 /components/.idf/
 **/components/.idf/
-# For modern ESP-IDF component manager
 managed_components/
-# If ESP-IDF tools are installed/referenced locally to the project
 .espressif/
 
-# CMake generated files
+# CMake generated files (if they appear outside build)
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
@@ -57,24 +53,23 @@ CTestTestfile.cmake
 __pycache__/
 *.egg-info/
 dist/
-
-# Virtual environment folders
 venv/
 .venv/
 env/
 
-# Language Servers
+# Language Servers / IDE
 .clangd/
 .ccls-cache/
 compile_commands.json
+.vscode/
+.idea/
+*.code-workspace
 
 # Windows specific
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-
-# User-specific configuration files
 *.user
-*.workspace # General workspace files, can be from various tools
-*.suo       # Visual Studio Solution User Options
-*.sln.docstates # Visual Studio
+*.workspace
+*.suo
+*.sln.docstates
