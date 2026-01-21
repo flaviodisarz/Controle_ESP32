@@ -30,7 +30,9 @@ build/
 *.map
 flasher_args.json # Generated in build directory
 sdkconfig.old
-sdkconfig
+# Quero versionar a config do projeto
+!sdkconfig
+!sdkconfig.defaults
 
 # ESP-IDF dependencies
 # For older versions or manual component management
