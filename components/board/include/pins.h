@@ -16,5 +16,5 @@
 // Botão 9 (dedicado, fora da matriz)
 #define PIN_BTN9 3
 
-// Leitura de bateria (ADC)
+    // Leitura de bateria (ADC)
 #define PIN_BAT_ADC 2
