@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "led.c"
     INCLUDE_DIRS "include"
-    REQUIRES freertos esp_timer driver
+    REQUIRES esp_timer led_strip
 )

@@ -1,7 +1,10 @@
 #include "state.h"
+
+#include <string.h>
+#include "esp_log.h"
+
 #include "led.h"
 #include "battery.h"
-#include "esp_log.h"
 
 static const char* TAG = "state";
 
@@ -40,13 +43,16 @@ static void handle_devices_long(uint8_t id, uint32_t ms) {
 
 void state_init(const state_config_t* cfg)
 {
-    if (cfg) s_cfg = *cfg;
-    else s_cfg.long_press_ms = 700;
+    // defaults
+    memset(&s_cfg, 0, sizeof(s_cfg));
+    s_cfg.long_press_ms = 700;
 
-    led_init();
+    if (cfg) s_cfg = *cfg;
+
+    led_init(NULL);
     battery_init();
 
-    // modo inicial fixo (fase 1)
+    // converte STATE->LED (sem LED conhecer state.h)
     led_set_mode((s_mode == APP_MODE_MEDIA) ? LED_MODE_MEDIA : LED_MODE_DEVICES);
 
     ESP_LOGI(TAG, "init: mode=%s long=%ums",
@@ -66,12 +72,11 @@ bool state_post_input(const input_event_t* ev)
     // LED: só no DOWN e só 1..8 (pra não piscar 3x no mesmo clique)
     if (ev->type == INPUT_EV_DOWN) {
         if (ev->id >= 1 && ev->id <= 8) {
-            led_feedback_button(ev->id);
+            led_button_feedback(ev->id);
         }
         return true;
     }
 
-    // Regras: só SHORT e LONG
     if (ev->type == INPUT_EV_SHORT) {
         if (s_mode == APP_MODE_MEDIA) handle_media_short(ev->id);
         else                          handle_devices_short(ev->id);

@@ -73,3 +73,17 @@ Desktop.ini
 *.workspace
 *.suo
 *.sln.docstates
+# ESP-IDF build artifacts
+build/
+sdkconfig.old
+dependencies.lock
+
+# managed components (gerados pelo IDF Component Manager)
+managed_components/
+
+# python/cache
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/

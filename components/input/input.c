@@ -184,20 +184,26 @@ static void scan_matrix_and_update(int64_t t_us)
             if (pressed) pressed_count++;
 
 #if INPUT_DEBUG_MATRIX
-            if (pressed) {
-                ESP_LOGI(TAG, "PRESS r=%d c=%d (rowGPIO=%d colGPIO=%d) => id_map=%d",
+            // loga só quando virou pressionado (borda raw)
+            if (pressed && !s_btn[id].raw) {
+                ESP_LOGI(TAG, "DOWN raw r=%d c=%d (rowGPIO=%d colGPIO=%d) => id=%d",
                          r, c, (int)ROW_PINS[r], (int)COL_PINS[c], id);
             }
 #endif
+
         }
     }
 
     set_all_rows_high();
 
 #if INPUT_ANTI_GHOST
-    // se mais de uma tecla pressionada no mesmo scan, ignora esse ciclo
     if (pressed_count > 1) {
-        memset(raw_now, 0, sizeof(raw_now));
+        // Anti-ghost esperto: não aceita leitura nova da matriz nesse ciclo,
+        // mas também NÃO força "UP" falso em quem já estava pressionado.
+        for (uint8_t id = 1; id <= 8; id++) {
+            update_button(id, s_btn[id].raw, t_us);
+        }
+        return;
     }
 #endif
 
@@ -236,7 +242,6 @@ static void prime_states(void)
         memset(raw_now, 0, sizeof(raw_now));
     }
 #endif
-
     for (uint8_t id = 1; id <= 8; id++) {
         s_btn[id].raw = raw_now[id];
         s_btn[id].stable = raw_now[id];
