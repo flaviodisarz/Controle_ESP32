@@ -1,6 +1,8 @@
 #include "state.h"
 #include "input.h"
 #include "esp_log.h"
+#include <stddef.h>
+
 
 static void on_input_event(const input_event_t* ev, void* ctx)
 {
