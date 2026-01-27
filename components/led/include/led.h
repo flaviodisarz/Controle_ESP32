@@ -22,11 +22,14 @@ typedef struct {
 void led_init(const led_config_t* cfg);
 void led_set_mode(led_mode_t mode);
 
-// utilitários novos (pra BTN7/BTN9)
+// utilitários (BTN7/BTN9 / avisos)
 void led_pulse_rgb(uint8_t r, uint8_t g, uint8_t b, uint32_t on_ms);
 void led_blink_rgb(uint8_t r, uint8_t g, uint8_t b, uint8_t times, uint32_t on_ms, uint32_t off_ms);
 
-// ainda existe, mas não estamos usando agora
+// apaga imediatamente (pra entrar em sleep sem deixar LED aceso)
+void led_off(void);
+
+// legado/debug (não usamos agora)
 void led_button_feedback(uint8_t id);
 
 #ifdef __cplusplus
