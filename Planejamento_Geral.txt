@@ -1,0 +1,103 @@
+1º) Matriz + BTN9 + LED + dois modos (por enquanto só prints)
+
+Objetivo: hardware e input 100% confiáveis antes de BLE/Wi-Fi.
+
+Entrega:
+
+leitura estável da matriz (8 botões)
+
+leitura do BTN9 dedicado (fora da matriz)
+
+alternância de modo (mas por enquanto não implementa ação do 9 nem do 7 no mídia)
+
+LED já respondendo a eventos simulados por botão (pra validar padrões)
+
+Teste:
+
+abrir monitor serial e apertar tudo
+
+confirmar debounce (sem “duplo clique fantasma”)
+
+confirmar long press do 1 (sleep) não dispara por acidente
+
+Commit sugerido: Fase 1 - Input + LED + modos (prints)
+
+2º) BLE no modo Mídia + Slot A/B + comandos reais
+
+Entrega:
+
+BLE HID anunciando certinho
+
+Conecta com PC/celular
+
+Botões 2/3/4/5/6/8 mandam consumer control
+
+Botão 7: troca slot e lógica 3s/5s
+
+Eventos de LED do modo mídia (pareando/conectou/desconectou/slot)
+
+Teste:
+
+celular: play/pause, volume, next/prev funcionando
+
+PC: mesmo teste
+
+troca de slot A/B “previsível”
+
+Commit: Fase 2 - BLE HID + slots
+
+3º) Wi-Fi no modo Dispositivos (por enquanto só prints)
+
+Entrega:
+
+quando entrar no modo dispositivos: conecta no Wi-Fi
+
+botão 1..8 imprime qual luz seria acionada
+
+LED do modo dispositivos (pareando/conectou/desconectou/pulso rosa)
+
+Teste:
+
+ver IP no serial
+
+ver reconexão se Wi-Fi cair
+
+Commit: Fase 3 - Wi-Fi base + prints
+
+4º) Notebook com Home Assistant
+
+Entrega:
+
+HA rodando certinho no notebook
+
+acesso via browser no celular e no PC
+
+5º) HA + Alexa
+
+Entrega:
+
+dispositivos no HA refletindo estados reais
+
+Alexa obedecendo e HA enxergando o estado
+
+6º) Firmware manda comandos pro HA (toggle inteligente)
+
+Entrega:
+
+botão manda comando, mas antes consulta estado (ou usa serviço toggle)
+
+latência ok, retries básicos
+
+LED “conectado” consistente
+
+Commit: Fase 6 - HA control
+
+7º) Ajustes finais
+
+economia de energia refinada
+
+debounce/tempos calibrados
+
+brilho LED e padrões “bonitos”
+
+estabilidade

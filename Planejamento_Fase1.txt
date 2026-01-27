@@ -1,0 +1,31 @@
+1) Estrutura do firmware (pasta + componentes) Meta: deixar o projeto organizado desde o começo (pra crescer sem virar bagunça). components/input/ Leitura da matriz 3×3 (só 8 teclas) Leitura do botão 9 dedicado (fora da matriz) Debounce Eventos DOWN/UP + classificação SHORT/LONG (mas na Fase 1 o LONG só vai ser usado pro botão 1 dormir; o botão 7/9 especiais ficam “travados”) components/led/ Driver do WS2812 (1 LED) “Player” de animação por fila (não bloqueia o sistema) Perfis de cor por modo (Mídia / Dispositivos) — por enquanto só “efeitos básicos de feedback” e o pulso de 5 min components/state/ Guarda modo atual: MEDIA ou DEVICES Recebe eventos do input e decide “o que fazer” Por enquanto: só dá printf() do que cada botão representa em cada modo Sem BLE, sem Wi-Fi ainda components/battery/ (stub na Fase 1) Só a função battery_read_percent() retornando um valor fixo (ex: 80%) pra testar a animação de “mostrar bateria” depois A leitura real via ADC fica pra fase específica (mais tarde) 
+
+
+
+2) Mapeamento de pinos (já fixo) Meta: centralizar pinagem em um único arquivo pra nunca mais caçar pino no código. Arquivo: main/pins.h Linhas: GPIO 6, 7, 21 Colunas: GPIO 4, 5, 20 LED WS2812: GPIO 10 Botão 9 dedicado: GPIO 3 Bateria ADC: GPIO 2 
+
+
+
+
+3) Modelo de leitura da matriz Meta: leitura estável, sem “tecla fantasma”, com debounce. Configurar linhas como saída Configurar colunas como entrada com pull-up Scan: Seta uma linha LOW, as outras HIGH Lê as colunas Se coluna ficou LOW, tecla daquela linha/coluna está pressionada Volta linha pra HIGH Repetir em loop com período tipo 2–5 ms Debounce por tecla (ex: 25 ms) Importante: a posição [7][8][ ] tem 2 teclas só na linha 3. 
+
+
+
+
+
+4) Eventos de botão (contrato entre input e state) Meta: input só “detecta” e state só “decide”. Eventos gerados: BTN_DOWN(id) BTN_UP(id) BTN_SHORT(id) BTN_LONG(id, ms) (usado só pro botão 1 nessa fase) Onde id vai ser 1..9 (mesmo o botão 9 sendo dedicado). 
+
+
+
+
+5) Regras de negócio da Fase 1 Meta: validar toda a lógica base sem BLE/Wi-Fi. Modo Mídia (só prints) 1: curto → print “LIGHT SLEEP”; longo → print “DEEP SLEEP” 2: print “VOL+” 3: print “MUTE” 4: print “PREV” 5: print “PLAY/PAUSE” 6: print “NEXT” 7: NÃO IMPLEMENTAR AINDA (print “SLOT (fase 2)”) 8: print “VOL-” 9: NÃO IMPLEMENTAR AINDA (print “BTN9 (fase 2)”) Modo Dispositivos (só prints) 1..8: print “Toggle Luz X” 9: NÃO IMPLEMENTAR AINDA (print “BTN9 (fase 2)”) 
+
+
+
+
+6) LED — comportamento mínimo na Fase 1 Meta: já deixar a “engine” pronta, mas sem dependências de BLE/Wi-Fi. Ao pressionar qualquer botão (1..8): dar um flash curto na cor do modo: Mídia: azul Dispositivos: rosa (só pra confirmar que o sistema responde) A cada 5 min (timer): piscada média Mídia: azul Dispositivos: rosa (Os efeitos complexos de parear/conectar/desconectar entram quando BLE/Wi-Fi existirem.) 
+
+
+
+
+7) Critérios de “Fase 1 pronta” ✅ Checklist: Todas as teclas 1..8 respondem sem “duplo disparo” Botão 9 dedicado responde (mesmo sem ação final) Prints corretos por modo LED pisca conforme modo Sem travar (nada bloqueante) Commit fechado no Git: Fase 1 - input + state + led (prints)

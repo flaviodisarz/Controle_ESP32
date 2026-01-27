@@ -1,0 +1,136 @@
+O projeto consiste em um controle de mídia e dispositivos.
+
+*Software*
+
+*Modo Mídia*
+
+Vai controlar via Bluetooth as mídias de um dispositivo seja ele Computador ou Celular, então os comandos devem ser unificados para que funcionem os dois tipos de aparelhos.
+
+*Botões
+
+Cada botão vai ter a sua função
+1 - 	Toque curto entra em light sleep
+Toque longo entra em deep sleep
+2 - Volume Mais
+3 - Mute
+4 - Musica Anterior
+5 - Play/Pause
+6 - Musica Seguinte
+7 - Trocar o Slot de Bluetooth (Serão Slot A e B, então o dispositivo vai salvar o primeiro dispositivo conectado no A, quando clicado no 7 ele vai buscar o dispositivo B se não tiver nenhum salvo ainda, vai salvar o B, se for apertado por 3 segundos vai apagar o dispositivo salvo do slot atual e entra em modo de pareamento, se for apertado por 5 segundos vai apagar os dois slots e entra em modo de pareamento do slot atual.), nessa questão se for possível não criar pin para que talvez não haja conflito, mas se for necessário que seja alterado o pin so quando for apagado os dados do slot.
+8 - Volume Menos
+9 - 	Se estiver acordado - Toque curto -> Troca de Modo (Mídia/Dispositivos) Toque Longo -> Mostrar nível da bateria
+Se estiver em light sleep - Toque Curto -> Acorda e Troca o Modo (Mídia/Dispositivos) Toque Longo -> Mostrar nível da bateria
+Se tiver em deep sleep - Acorda
+Um ponto importante do botão 9, ele so vai estar fisicamente na matriz, porem na leitura do código ele não vai estar na matriz.
+
+*Matriz
+
+a matriz fica dessa forma
+[1] [2] [3]
+[4] [5] [6]
+[7] [8] [ ]
+
+*Led
+
+o led no modo Mídia vai ter essas ações.
+
+* Pareando - 3 pulso rápidos em ciano
+
+* Conectou - Rainbow por 3 segundos
+
+* Desconectou - 2 piscadas longas em laranja
+
+* A cada 5 min - uma piscada média em azul (funciona em light sleep)
+
+* Mudou para Slot B - 3 piscada rápidas em azul
+
+* Mudou para Slot A - 2 piscada rápidas em azul
+
+* Leitura da Bateria (ao ter um toque longo no botão 9)
+
+  > 75% 		- 1 pulso médio Verde
+  > 50% > 75% 	- 1 pulso médio Amarelo
+  > 25% > 50%	- 1 pulso médio Laranja
+  > <25%		- 2 pulsos rápido Vermelho
+
+* A cada 3,5 min se a bateria estiver <25% 2 pulsos rápido vermelho
+
+*Modo Dispositivos*
+
+Vai controlar via wifi e Home Assistent os dipositivos alexa.
+
+*Wifi
+
+Vai conectar com o wifi:
+SSID: Disarz-5G
+Password: phesmathos
+
+*Botões
+
+Cada um vai mandar um comando para o HA, mas entendendo o dispositivo antes. pois se ele estiver ligado o comando vai ser desligue, se estiver desligado o comando vai ser ligue.
+
+1 - Ligar/Desligar - Luz da Sala
+2 - Ligar/Desligar - Spot Tv
+3 - Ligar/Desligar - Spot Parede
+4 - Ligar/Desligar - Luz de Led
+5 - Ligar/Desligar - Luz da Copa
+6 - Ligar/Desligar - Luz da Cozinha
+7 - Ligar/Desligar - Luz do Escritório
+8 - Ligar/Desligar - Luz do Quarto
+9 - 	Se estiver acordado - Toque curto -> Troca de Modo (Mídia/Dispositivos) Toque Longo -> Mostrar nível da bateria
+Se estiver em light sleep - Toque Curto -> Acorda e Troca o Modo (Mídia/Dispositivos) Toque Longo -> Mostrar nível da bateria
+Se tiver em deep sleep - Acorda
+Um ponto importante do botão 9, ele so vai estar fisicamente na matriz, porem na leitura do código ele não vai estar na matriz.
+
+*Matriz
+
+a matriz fica dessa forma
+[1] [2] [3]
+[4] [5] [6]
+[7] [8] [ ]
+
+*Led
+
+o led no modo Dispositivos vai ter essas ações.
+
+* Pareando - 3 pulso rápidos em lilás
+
+* Conectou - Rainbow por 3 segundos
+
+* Desconectou - 2 piscadas longas em laranja
+
+* A cada 5 min - uma piscada média em rosa (funciona em light sleep)
+
+* Leitura da Bateria (ao ter um toque longo no botão 9)
+
+  > 75% 		- 1 pulso médio Verde
+  > 50% > 75% 	- 1 pulso médio Amarelo
+  > 25% > 50%	- 1 pulso médio Laranja
+  > <25%		- 2 pulsos rápido Vermelho
+
+* A cada 3,5 min se a bateria estiver <25% 2 pulsos rápido vermelho
+
+*Hardware*
+
+Para o hardware serão os seguintes itens
+9 push button
+2 resistores de 470k
+1 resistor de 330r
+1 capacitor eletrolítico 100uf 16v
+1 capacitor cerâmico 100nf
+1 chave liga e desliga
+1 led rgb ws2812b
+1 Seeed XIAO ESP32-C3
+1 bateria 250mAh
+
+As ligações eletrônicas podem ser vistas no arquivo dentro desse chat, uma imagem do esquema eletrônico.
+
+Os processos quero que sejam detalhados.
+
+1º Montar o código para ler a matriz e o botão dedicado junto com os efeitos da led ja colocando os dois modos, mídia e dispositivo - mas por hora so printando no monitor a função de cada botão, exceto a função do botão 7 no mídia e o 9 tanto no mídia quanto no dispositivo.
+2º Ajustar o código para se conectar com o bluetooth no modo Mídia nos dois slots, e enviar os comandos para o celular/computador
+3º Ajustar o código para acessar o wifi no modo Dispositivo e printar no serial os nomes de cada botão
+4º Formatar o notbook para ser o Home Assistent
+5º Configurar o HA para a Alexa.
+6º Ajustar o código para enviar os comandos da Alexa.
+7º Melhorias e ajustes caso necessário.
