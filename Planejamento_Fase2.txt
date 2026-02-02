@@ -1,0 +1,162 @@
+Cronograma – Fase 2 (revisado)
+Etapa 2.0 — Preparação do terreno (base técnica)
+
+Objetivo: plugar BLE no projeto sem quebrar o que já tá redondo.
+
+Fazer
+
+Criar components/ble_hid/ (ou media_ble/) com API limpa pro state chamar.
+
+Habilitar Bluetooth no sdkconfig.
+
+Garantir que nada de BLE roda dentro do callback “rápido” do input (só posta evento pro state).
+
+Entrega
+
+Compila com BLE habilitado.
+
+Etapa 2.1 — BLE HID “Hello World” (anuncia, conecta e LED conta a história)
+
+Objetivo: aparecer certinho, conectar com celular/PC e sinalizar estados no LED.
+
+Fazer
+
+Anúncio BLE + HID Consumer Control.
+
+Callbacks: advertising / connected / disconnected.
+
+LED (modo mídia)
+
+Pareando/anunciando: azul com pulso rápido (ou blink curto repetindo).
+
+Conectou: rainbow curto e volta pro azul “modo mídia normal”.
+
+✅ Desconectou (correção): 2 piscadas longas em laranja.
+
+Entrega
+
+Conecta no celular e PC sem cair.
+
+LED confirma status sem “interpretação de oráculo”.
+
+Etapa 2.2 — Comandos reais nos botões (Consumer Control)
+
+Objetivo: botões viram ações reais.
+
+Fazer
+
+BTN2 vol+, BTN3 mute, BTN4 prev, BTN5 play/pause, BTN6 next, BTN8 vol−
+
+Enviar “press + release” no report HID.
+
+Se não estiver conectado: não envia (só log e/ou sinal visual).
+
+Entrega
+
+Celular e PC respondendo aos comandos.
+
+Etapa 2.3 — Slot A/B previsível (troca curta)
+
+Objetivo: BTN7 curto alterna A/B de forma consistente.
+
+Fazer
+
+BTN7 SHORT:
+
+troca slot
+
+desconecta do atual (se conectado)
+
+volta a anunciar no slot novo
+
+Boot tenta o último slot usado (como já está no state via RTC — e depois a gente pode fechar com NVS se quiser “persistir até com power off”).
+
+LED
+
+Indicação de slot (ex: 1 blink = A / 2 blinks = B) e volta pro azul padrão.
+
+Entrega
+
+Troca A/B sem surpresa.
+
+Etapa 2.4 — BTN7: regra 3s / 5s (wipe + pareamento)
+
+Objetivo: cumprir o contrato do botão 7.
+
+Fazer
+
+3s: apaga só o slot atual e entra em pareamento desse slot.
+
+5s: apaga A e B e entra em pareamento do slot atual.
+
+Implementar “forget bonds/keys” conforme o stack BLE escolhido.
+
+LED
+
+3s: efeito “apagando” + volta pra animação de pareamento
+
+5s: efeito mais forte + pareamento
+
+Entrega
+
+Wipe funciona e o pareamento entra automaticamente.
+
+Etapa 2.5 — Sleep “de verdade” (correção aplicada)
+
+Objetivo: sono impacta conexão do jeito que você definiu.
+
+Regras finais
+
+Light sleep (BTN1 curto):
+
+permanece conectado no BLE
+
+fica “parado” economizando energia mas pronto pra receber comando
+
+Deep sleep (BTN1 longo):
+
+desconecta e dorme total
+
+Wake (BTN9):
+
+acorda
+
+reconecta automaticamente com o último dispositivo (respeitando o último slot usado)
+
+O que fazer nessa etapa
+
+Ajustar o fluxo do state:
+
+antes de deep sleep: mandar disconnect + limpar estado de conexão (do lado do ble_hid)
+
+ao acordar via BTN9: iniciar BLE já no slot salvo e tentar reconectar (ou entrar em advertising até conectar)
+
+Testar que o light sleep não “mata” o link (ou, se o hardware/stack limitar, a gente adapta o mecanismo pra manter a conexão com baixo consumo — mas a regra é essa).
+
+Entrega
+
+Light sleep: continua controlando mídia sem precisar parear de novo.
+
+Deep sleep: some da jogada e volta pelo BTN9 reconectando no último.
+
+Etapa 2.6 — Testes de aceitação (celular + PC)
+
+Celular
+
+play/pause, vol+/vol−, next/prev, mute
+
+troca de slot A/B previsível
+
+3s wipe slot atual + re-pair
+
+5s wipe total + re-pair
+
+desconectou → 2 piscadas longas laranja
+
+light sleep mantém conexão e segue aceitando comandos
+
+deep sleep desconecta; BTN9 acorda e reconecta no último
+
+PC
+
+mesma bateria de testes
