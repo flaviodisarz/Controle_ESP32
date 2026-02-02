@@ -1,4 +1,5 @@
 #include "state.h"
+#include "ble_hid.h"
 
 #include <string.h>
 #include <stdint.h>
@@ -22,8 +23,8 @@ static const char* TAG = "state";
 // ===== tempos padrão =====
 #define MEDIA_LIGHT_MS_DEFAULT       (30UL * 60UL * 1000UL)  // 30 min
 #define MEDIA_DEEP_MS_DEFAULT        (60UL * 60UL * 1000UL)  // 60 min total
-#define DEV_LIGHT_MS_DEFAULT         (10UL * 60UL * 1000UL)  // 10 min
-#define DEV_LIGHT_TO_DEEP_MS_DEFAULT (5UL  * 60UL * 1000UL)  // 5 min no light
+#define DEV_LIGHT_MS_DEFAULT         (10UL * 60UL * 1000UL)  // 10 min (placeholder)
+#define DEV_LIGHT_TO_DEEP_MS_DEFAULT (5UL  * 60UL * 1000UL)  // 5 min no light (placeholder)
 
 // Slot local
 #define SLOT_A 0
@@ -49,6 +50,10 @@ static volatile bool s_sleep_lock = false;
 // ✅ anti “double toggle” do BTN9 (wake + evento)
 static int64_t s_btn9_guard_until_us = 0;
 
+// ===== BLE (Etapa 2.1) =====
+static bool s_ble_inited = false;
+
+// ================== eventos internos ==================
 typedef enum {
     ST_EV_INPUT = 0,
     ST_EV_IDLE_TIMEOUT = 1,
@@ -165,6 +170,54 @@ static void restart_idle_timer(void)
     ESP_ERROR_CHECK(esp_timer_start_once(s_idle_timer, (uint64_t)ms * 1000ULL));
 }
 
+// ================== BLE events -> LED ==================
+static void on_ble_evt(ble_hid_evt_t evt, void* user)
+{
+    (void)user;
+
+    // Durante transição de sleep, não briga com LED
+    if (s_sleep_lock) return;
+
+    // Só faz sentido no modo mídia
+    if (s_mode != APP_MODE_MEDIA) return;
+
+    switch (evt) {
+        case BLE_HID_EVT_ADVERTISING:
+            // base: pulso azul (rápido)
+            led_pulse_rgb(0, 80, 255, 1200);
+            break;
+
+        case BLE_HID_EVT_CONNECTED:
+            // “rainbow curtinho” (3 piscadas) e volta pro azul
+            led_blink_rgb(120, 0, 0, 1, 120, 60);
+            led_blink_rgb(0, 120, 0, 1, 120, 60);
+            led_blink_rgb(0, 0, 120, 1, 120, 60);
+            led_pulse_rgb(0, 80, 255, 2500);
+            break;
+
+        case BLE_HID_EVT_DISCONNECTED:
+            // ✅ tua regra: 2 piscadas longas em laranja
+            led_blink_rgb(120, 40, 0, 2, 520, 220);
+            led_pulse_rgb(0, 80, 255, 1200);
+            break;
+    }
+}
+
+static void ensure_ble_inited(void)
+{
+    if (s_ble_inited) return;
+
+    ble_hid_cfg_t bcfg = {
+        .slot = (s_slot == SLOT_B) ? BLE_HID_SLOT_B : BLE_HID_SLOT_A,
+        .device_name_prefix = "Controle",
+        .on_evt = on_ble_evt,
+        .user = NULL,
+    };
+
+    ESP_ERROR_CHECK(ble_hid_init(&bcfg));
+    s_ble_inited = true;
+}
+
 // ================== core actions ==================
 static void apply_mode_led(app_mode_t m)
 {
@@ -184,6 +237,8 @@ static void media_toggle_slot(void)
     s_slot = (s_slot == SLOT_A) ? SLOT_B : SLOT_A;
     persist_state();
 
+    // Etapa 2.1: aqui ainda é só indicação visual/log.
+    // Etapa 2.3: aqui vai entrar ble_hid_set_slot + disconnect/adv etc.
     if (s_slot == SLOT_B) {
         ESP_LOGI(TAG, "Slot B Conectando");
         led_blink_rgb(0, 80, 255, 3, 60, 60);
@@ -202,6 +257,16 @@ static void toggle_mode(void)
 
     ESP_LOGI(TAG, "Modo %s", (s_mode == APP_MODE_MEDIA) ? "MIDIA" : "DISPOSITIVOS");
     apply_mode_led(s_mode);
+
+    // ✅ Etapa 2.1: liga/desliga BLE conforme o modo
+    if (s_mode == APP_MODE_MEDIA) {
+        ensure_ble_inited();
+        ESP_ERROR_CHECK(ble_hid_start());
+    } else {
+        if (s_ble_inited) {
+            ESP_ERROR_CHECK(ble_hid_stop());
+        }
+    }
 
     restart_idle_timer();
 }
@@ -225,6 +290,11 @@ static void enter_deep_sleep(const char* why)
              why ? " (" : "", why ? why : "", why ? ")" : "");
 
     (void)esp_timer_stop(s_idle_timer);
+
+    // Para BLE antes de dormir (deep = desconecta)
+    if (s_ble_inited && s_mode == APP_MODE_MEDIA) {
+        (void)ble_hid_stop();
+    }
 
     // para de varrer matriz / parar eventos enquanto desliga
     suspend_input_task_now();
@@ -253,8 +323,7 @@ static void enter_light_sleep(const char* why)
 
     (void)esp_timer_stop(s_idle_timer);
 
-    // 🔥 BUGFIX: para o scan da matriz antes de configurar rows LOW,
-    // senão o input_task coloca rows HIGH de novo e você nunca acorda pela matriz.
+    // BUGFIX: para o scan da matriz antes de configurar rows LOW
     suspend_input_task_now();
 
     if (s_q) xQueueReset(s_q);
@@ -363,7 +432,6 @@ static void state_task(void* arg)
                 if (s_suppress_btn9_once) {
                     s_suppress_btn9_once = false;
                     ESP_LOGI(TAG, "BTN9 (wake deep) ignorando 1x o SHORT");
-                    // ainda cria um guard curtinho contra duplo
                     s_btn9_guard_until_us = now + 500000;
                     continue;
                 }
@@ -402,8 +470,10 @@ static void state_task(void* arg)
 void state_init(const state_config_t* cfg)
 {
     memset(&s_cfg, 0, sizeof(s_cfg));
-    s_cfg.long_press_ms = 700;
     if (cfg) s_cfg = *cfg;
+
+    // defaults onde 0 significa "usar padrão"
+    if (s_cfg.long_press_ms == 0) s_cfg.long_press_ms = 700;
 
     s_mode = (s_mode_rtc == APP_MODE_DEVICES) ? APP_MODE_DEVICES : APP_MODE_MEDIA;
     s_slot = (s_slot_rtc == SLOT_B) ? SLOT_B : SLOT_A;
@@ -446,6 +516,12 @@ void state_start(void)
 {
     xTaskCreate(state_task, "state_task", 4096, NULL, 10, NULL);
     ESP_LOGI(TAG, "start (ok)");
+
+    // Se iniciou em mídia, BLE deve anunciar
+    if (s_mode == APP_MODE_MEDIA) {
+        ensure_ble_inited();
+        ESP_ERROR_CHECK(ble_hid_start());
+    }
 }
 
 bool state_post_input(const input_event_t* ev)
