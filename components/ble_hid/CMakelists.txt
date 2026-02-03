@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "ble_hid.c"
     INCLUDE_DIRS "include"
-    REQUIRES nvs_flash bt esp_hid
+    PRIV_REQUIRES esp_hid bt nvs_flash esp_event
 )

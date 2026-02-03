@@ -3,106 +3,52 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "sdkconfig.h"
 #include "esp_log.h"
 #include "esp_err.h"
-#include "sdkconfig.h"
 
 #include "nvs_flash.h"
+
 #include "esp_bt.h"
+#include "esp_bt_main.h"
+#include "esp_bt_device.h"
+#include "esp_gap_ble_api.h"
+//#include "esp_bluedroid_api.h"
+#include "esp_event.h"
 
-// ESP HID Device (componente esp_hid)
-#include "esp_hidd.h"
 #include "esp_hid_common.h"
-
-// NimBLE (GAP advertising)
-#include "host/ble_gap.h"
-#include "host/ble_hs.h"
-#include "host/ble_hs_adv.h"
-#include "services/gap/ble_svc_gap.h"
-
-/* ===================== Checks de config ===================== */
+#include "esp_hidd.h"
 
 #if !CONFIG_BT_ENABLED
-#error "Bluetooth desabilitado. Habilite em menuconfig: Component config -> Bluetooth -> Bluetooth"
+#error "Bluetooth desabilitado. Habilite em menuconfig: Component config -> Bluetooth"
 #endif
 
-#if !CONFIG_BT_NIMBLE_ENABLED
-#error "NimBLE desabilitado. Habilite em menuconfig: Component config -> Bluetooth -> NimBLE"
+#if !CONFIG_BT_BLUEDROID_ENABLED
+#error "Você precisa do Bluedroid habilitado (NimBLE OFF) pra usar esp_hid/esp_hidd_dev_init."
 #endif
 
-#if !CONFIG_BT_NIMBLE_ROLE_PERIPHERAL
-#error "NimBLE Peripheral role desabilitado. Habilite: Component config -> Bluetooth -> NimBLE -> Peripheral Role"
+#if CONFIG_BT_NIMBLE_ENABLED
+#error "NimBLE está ligado. Desligue NimBLE e use Bluedroid pra este caminho."
 #endif
 
 static const char* TAG = "ble_hid";
 
-/* ===================== Report Map (Consumer / Media) ===================== */
-/* Mantive o seu, porque você já tá montando a base do consumer control. */
+/* ===================== Report Map (o seu) ===================== */
 static const unsigned char mediaReportMap[] = {
-    0x05, 0x0C,       // Usage Page (Consumer)
-    0x09, 0x01,       // Usage (Consumer Control)
-    0xA1, 0x01,       // Collection (Application)
-
-    0x85, 0x03,       // Report ID (3)
-
-    0x09, 0x02,       // Usage (Numeric Key Pad)
-    0xA1, 0x02,       // Collection (Logical)
-    0x05, 0x09,       // Usage Page (Button)
-    0x19, 0x01,       // Usage Minimum (1)
-    0x29, 0x0A,       // Usage Maximum (10)
-    0x15, 0x01,       // Logical Minimum (1)
-    0x25, 0x0A,       // Logical Maximum (10)
-    0x75, 0x04,       // Report Size (4)
-    0x95, 0x01,       // Report Count (1)
-    0x81, 0x00,       // Input (Data,Array,Abs)
-    0xC0,             // End Collection
-
-    0x05, 0x0C,       // Usage Page (Consumer)
-    0x09, 0x86,       // Usage (Channel)
-    0x15, 0xFF,       // Logical Minimum (-1)
-    0x25, 0x01,       // Logical Maximum (1)
-    0x75, 0x02,       // Report Size (2)
-    0x95, 0x01,       // Report Count (1)
-    0x81, 0x46,       // Input (Data,Var,Rel,Null State)
-
-    0x09, 0xE9,       // Usage (Volume Increment)
-    0x09, 0xEA,       // Usage (Volume Decrement)
-    0x15, 0x00,       // Logical Minimum (0)
-    0x75, 0x01,       // Report Size (1)
-    0x95, 0x02,       // Report Count (2)
-    0x81, 0x02,       // Input (Data,Var,Abs)
-
-    0x09, 0xE2,       // Usage (Mute)
-    0x09, 0x30,       // Usage (Power)
-    0x09, 0x83,       // Usage (Recall Last)
-    0x09, 0x81,       // Usage (Assign Selection)
-    0x09, 0xB0,       // Usage (Play)
-    0x09, 0xB1,       // Usage (Pause)
-    0x09, 0xB2,       // Usage (Record)
-    0x09, 0xB3,       // Usage (Fast Forward)
-    0x09, 0xB4,       // Usage (Rewind)
-    0x09, 0xB5,       // Usage (Scan Next Track)
-    0x09, 0xB6,       // Usage (Scan Previous Track)
-    0x09, 0xB7,       // Usage (Stop)
-    0x15, 0x01,       // Logical Minimum (1)
-    0x25, 0x0C,       // Logical Maximum (12)
-    0x75, 0x04,       // Report Size (4)
-    0x95, 0x01,       // Report Count (1)
-    0x81, 0x00,       // Input (Data,Array,Abs)
-
-    0x09, 0x80,       // Usage (Selection)
-    0xA1, 0x02,       // Collection (Logical)
-    0x05, 0x09,       // Usage Page (Button)
-    0x19, 0x01,       // Usage Minimum (1)
-    0x29, 0x03,       // Usage Maximum (3)
-    0x15, 0x01,       // Logical Minimum (1)
-    0x25, 0x03,       // Logical Maximum (3)
-    0x75, 0x02,       // Report Size (2)
-    0x81, 0x00,       // Input (Data,Array,Abs)
-    0xC0,             // End Collection
-
-    0x81, 0x03,       // Input (Const,Var,Abs)
-    0xC0              // End Collection
+    0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01,
+    0x85, 0x03,
+    0x09, 0x02, 0xA1, 0x02,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x0A, 0x15, 0x01, 0x25, 0x0A, 0x75, 0x04, 0x95, 0x01, 0x81, 0x00,
+    0xC0,
+    0x05, 0x0C, 0x09, 0x86, 0x15, 0xFF, 0x25, 0x01, 0x75, 0x02, 0x95, 0x01, 0x81, 0x46,
+    0x09, 0xE9, 0x09, 0xEA, 0x15, 0x00, 0x75, 0x01, 0x95, 0x02, 0x81, 0x02,
+    0x09, 0xE2, 0x09, 0x30, 0x09, 0x83, 0x09, 0x81, 0x09, 0xB0, 0x09, 0xB1, 0x09, 0xB2, 0x09, 0xB3, 0x09, 0xB4, 0x09, 0xB5, 0x09, 0xB6, 0x09, 0xB7,
+    0x15, 0x01, 0x25, 0x0C, 0x75, 0x04, 0x95, 0x01, 0x81, 0x00,
+    0x09, 0x80, 0xA1, 0x02,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x01, 0x25, 0x03, 0x75, 0x02, 0x81, 0x00,
+    0xC0,
+    0x81, 0x03,
+    0xC0
 };
 
 static esp_hid_raw_report_map_t s_report_maps[] = {
@@ -113,12 +59,14 @@ static esp_hid_raw_report_map_t s_report_maps[] = {
 
 static ble_hid_cfg_t s_cfg;
 static ble_hid_state_t s_state = BLE_HID_STATE_OFF;
+
 static esp_hidd_dev_t* s_hid = NULL;
 
 static char s_dev_name[32];
 
-static bool s_stack_started = false;
 static bool s_adv_requested = false;
+static bool s_adv_ready = false;      // adv data configurado
+static bool s_hid_ready = false;      // HID start ok
 
 static void set_state(ble_hid_state_t st) { s_state = st; }
 
@@ -149,99 +97,74 @@ static void build_name(void)
 
     char slotc = (s_cfg.slot == BLE_HID_SLOT_B) ? 'B' : 'A';
     snprintf(s_dev_name, sizeof(s_dev_name), "%s %c", prefix, slotc);
-
-    // Atualiza o GAP device name (NimBLE GAP service)
-    ble_svc_gap_device_name_set(s_dev_name);
 }
 
-/* ===================== Advertising (NimBLE) ===================== */
+/* ===================== Advertising (Bluedroid GAP) ===================== */
 
-static int gap_event_cb(struct ble_gap_event* event, void* arg)
+static esp_ble_adv_params_t s_adv_params = {
+    .adv_int_min        = 0x20,
+    .adv_int_max        = 0x40,
+    .adv_type           = ADV_TYPE_IND,
+    .own_addr_type      = BLE_ADDR_TYPE_PUBLIC,
+    .channel_map        = ADV_CHNL_ALL,
+    .adv_filter_policy  = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
+};
+
+static esp_ble_adv_data_t s_adv_data = {
+    .set_scan_rsp        = false,
+    .include_name        = true,
+    .include_txpower     = true,
+    .min_interval        = 0x0006,
+    .max_interval        = 0x0010,
+    .appearance          = ESP_HID_APPEARANCE_GENERIC,
+    .manufacturer_len    = 0,
+    .p_manufacturer_data = NULL,
+    .service_data_len    = 0,
+    .p_service_data      = NULL,
+    .service_uuid_len    = 0,
+    .p_service_uuid      = NULL,
+    .flag = (ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT),
+};
+
+static void try_start_adv(void)
 {
-    (void)arg;
+    if (!s_adv_requested) return;
+    if (!s_adv_ready) return;
+    if (!s_hid_ready) return;
 
-    switch (event->type) {
-    case BLE_GAP_EVENT_ADV_COMPLETE:
-        ESP_LOGI(TAG, "ADV complete, reason=%d", event->adv_complete.reason);
-        // se ainda queremos ficar anunciando, tenta de novo
-        if (s_adv_requested && s_stack_started) {
-            // restart
-            // (não chama aqui direto pra não ficar loop nervoso se der erro)
+    esp_err_t err = esp_ble_gap_start_advertising(&s_adv_params);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ble_gap_start_advertising failed: %s", esp_err_to_name(err));
+        return;
+    }
+}
+
+static void gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+{
+    switch (event) {
+    case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
+        ESP_LOGI(TAG, "ADV data set");
+        s_adv_ready = true;
+        try_start_adv();
+        break;
+
+    case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
+        if (param->adv_start_cmpl.status == ESP_BT_STATUS_SUCCESS) {
+            ESP_LOGI(TAG, "Advertising started (name='%s')", s_dev_name);
+            set_state(BLE_HID_STATE_ADVERTISING);
+            emit_evt(BLE_HID_EVT_ADVERTISING);
+        } else {
+            ESP_LOGE(TAG, "ADV start failed, status=%d", param->adv_start_cmpl.status);
         }
+        break;
+
+    case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
+        ESP_LOGI(TAG, "Advertising stopped");
         break;
 
     default:
         break;
     }
-
-    return 0;
-}
-
-static esp_err_t adv_set_fields(uint16_t appearance, const char* name)
-{
-    struct ble_hs_adv_fields f;
-    memset(&f, 0, sizeof(f));
-
-    f.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-
-    // Nome
-    f.name = (const uint8_t*)name;
-    f.name_len = (uint8_t)strlen(name);
-    f.name_is_complete = 1;
-
-    // TX power automático (opcional)
-    f.tx_pwr_lvl_is_present = 1;
-    f.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
-
-    // Appearance (ajuda alguns hosts)
-    f.appearance_is_present = 1;
-    f.appearance = appearance;
-
-    int rc = ble_gap_adv_set_fields(&f);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gap_adv_set_fields rc=%d", rc);
-        return ESP_FAIL;
-    }
-
-    return ESP_OK;
-}
-
-static esp_err_t adv_start(void)
-{
-    uint8_t own_addr_type;
-    int rc = ble_hs_id_infer_auto(0, &own_addr_type);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_hs_id_infer_auto rc=%d", rc);
-        return ESP_FAIL;
-    }
-
-    struct ble_gap_adv_params adv_params;
-    memset(&adv_params, 0, sizeof(adv_params));
-    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND; // conectável
-    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN; // discoverable
-
-    rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER,
-                          &adv_params, gap_event_cb, NULL);
-
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gap_adv_start rc=%d", rc);
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Advertising started (name='%s')", s_dev_name);
-    set_state(BLE_HID_STATE_ADVERTISING);
-    emit_evt(BLE_HID_EVT_ADVERTISING);
-    return ESP_OK;
-}
-
-static void adv_start_if_enabled(void)
-{
-    if (!s_stack_started) return;
-    if (!s_adv_requested) return;
-
-    // Atualiza fields sempre que for anunciar (nome/appearance)
-    (void)adv_set_fields(ESP_HID_APPEARANCE_GENERIC, s_dev_name);
-    (void)adv_start();
 }
 
 /* ===================== Callback do HID device ===================== */
@@ -258,13 +181,8 @@ static void hidd_event_cb(void* handler_args, esp_event_base_t base, int32_t id,
     case ESP_HIDD_START_EVENT:
         ESP_LOGI(TAG, "HID start status=%d", p->start.status);
         if (p->start.status == ESP_OK) {
-            s_stack_started = true;
-
-            // O nome pode ser aplicado aqui também
-            build_name();
-
-            // Se alguém já pediu start, anuncia agora
-            adv_start_if_enabled();
+            s_hid_ready = true;
+            try_start_adv();
         }
         break;
 
@@ -280,12 +198,31 @@ static void hidd_event_cb(void* handler_args, esp_event_base_t base, int32_t id,
 
         // volta a anunciar se ainda estiver “ligado”
         set_state(BLE_HID_STATE_ADVERTISING);
-        adv_start_if_enabled();
+        try_start_adv();
         break;
 
     default:
         break;
     }
+}
+
+/* ===================== BT stack init ===================== */
+
+static esp_err_t bt_stack_init(void)
+{
+    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+
+    esp_err_t ret = esp_bt_controller_init(&bt_cfg);
+    if (ret) return ret;
+
+    ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
+    if (ret) return ret;
+
+    ret = esp_bluedroid_init();
+    if (ret) return ret;
+
+    ret = esp_bluedroid_enable();
+    return ret;
 }
 
 /* ===================== API pública ===================== */
@@ -294,20 +231,27 @@ esp_err_t ble_hid_init(const ble_hid_cfg_t* cfg)
 {
     if (cfg) s_cfg = *cfg;
 
-    ESP_LOGI(TAG, "init (slot=%c)",
-             (s_cfg.slot == BLE_HID_SLOT_B) ? 'B' : 'A');
+    ESP_LOGI(TAG, "init (slot=%c)", (s_cfg.slot == BLE_HID_SLOT_B) ? 'B' : 'A');
 
     ESP_ERROR_CHECK(nvs_safe_init());
 
-    // BLE only: libera memória de classic (se tiver)
+    // BLE only: libera memória de classic
     (void)esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
 
-    // Esse nome é aplicado no START_EVENT (quando stack tá pronta),
-    // mas já montamos agora pra log/consistência.
-    snprintf(s_dev_name, sizeof(s_dev_name), "Controle %c",
-             (s_cfg.slot == BLE_HID_SLOT_B) ? 'B' : 'A');
+    ESP_ERROR_CHECK(bt_stack_init());
 
-    // Config HID
+    ESP_ERROR_CHECK(esp_ble_gap_register_callback(gap_cb));
+
+    build_name();
+    ESP_ERROR_CHECK(esp_ble_gap_set_device_name(s_dev_name));
+
+    s_adv_requested = false;
+    s_adv_ready = false;
+    s_hid_ready = false;
+    s_hid = NULL;
+
+    ESP_ERROR_CHECK(esp_ble_gap_config_adv_data(&s_adv_data));
+
     esp_hid_device_config_t hid_cfg = {
         .vendor_id = 0xCAFE,
         .product_id = 0x0003,
@@ -321,10 +265,6 @@ esp_err_t ble_hid_init(const ble_hid_cfg_t* cfg)
         .report_maps_len = sizeof(s_report_maps) / sizeof(s_report_maps[0]),
     };
 
-    s_stack_started = false;
-    s_adv_requested = false;
-    s_hid = NULL;
-
     ESP_ERROR_CHECK(esp_hidd_dev_init(&hid_cfg, ESP_HID_TRANSPORT_BLE, hidd_event_cb, &s_hid));
 
     set_state(BLE_HID_STATE_OFF);
@@ -335,9 +275,7 @@ esp_err_t ble_hid_start(void)
 {
     ESP_LOGI(TAG, "start requested");
     s_adv_requested = true;
-
-    // Se o stack já subiu, anuncia agora.
-    adv_start_if_enabled();
+    try_start_adv();
     return ESP_OK;
 }
 
@@ -345,10 +283,7 @@ esp_err_t ble_hid_stop(void)
 {
     ESP_LOGI(TAG, "stop requested");
     s_adv_requested = false;
-
-    // Para advertising se estiver rodando
-    (void)ble_gap_adv_stop();
-
+    (void)esp_ble_gap_stop_advertising();
     set_state(BLE_HID_STATE_OFF);
     return ESP_OK;
 }
@@ -357,18 +292,21 @@ esp_err_t ble_hid_set_slot(ble_hid_slot_t slot)
 {
     s_cfg.slot = slot;
 
-    // Atualiza nome (e advertising se estiver ativo)
+    // troca nome e reinicia advertising
     build_name();
 
     ESP_LOGI(TAG, "set_slot -> %c (name='%s')",
              (slot == BLE_HID_SLOT_B) ? 'B' : 'A',
              s_dev_name);
 
-    // Se estiver anunciando, reinicia o adv pro nome novo “pegar”
-    if (s_adv_requested && s_stack_started) {
-        (void)ble_gap_adv_stop();
-        adv_start_if_enabled();
-    }
+    (void)esp_ble_gap_stop_advertising();
+
+    ESP_ERROR_CHECK(esp_ble_gap_set_device_name(s_dev_name));
+
+    s_adv_ready = false;
+    ESP_ERROR_CHECK(esp_ble_gap_config_adv_data(&s_adv_data));
+
+    try_start_adv();
 
     return ESP_OK;
 }
