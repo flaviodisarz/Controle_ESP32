@@ -1,8 +1,7 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
 #include "esp_err.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,14 +14,14 @@ typedef enum {
 
 typedef enum {
     BLE_HID_STATE_OFF = 0,
-    BLE_HID_STATE_ADVERTISING,
-    BLE_HID_STATE_CONNECTED,
+    BLE_HID_STATE_ADVERTISING = 1,
+    BLE_HID_STATE_CONNECTED = 2,
 } ble_hid_state_t;
 
 typedef enum {
     BLE_HID_EVT_ADVERTISING = 0,
-    BLE_HID_EVT_CONNECTED,
-    BLE_HID_EVT_DISCONNECTED,
+    BLE_HID_EVT_CONNECTED = 1,
+    BLE_HID_EVT_DISCONNECTED = 2,
 } ble_hid_evt_t;
 
 typedef void (*ble_hid_evt_cb_t)(ble_hid_evt_t evt, void* user);
@@ -30,14 +29,14 @@ typedef void (*ble_hid_evt_cb_t)(ble_hid_evt_t evt, void* user);
 typedef struct {
     ble_hid_slot_t slot;
     const char* device_name_prefix;   // ex: "Controle"
-    ble_hid_evt_cb_t on_evt;
-    void* user;
+    ble_hid_evt_cb_t on_evt;          // callback pra state/led
+    void* user;                       // ctx do callback
 } ble_hid_cfg_t;
 
-esp_err_t       ble_hid_init(const ble_hid_cfg_t* cfg);
-esp_err_t       ble_hid_start(void);
-esp_err_t       ble_hid_stop(void);
-esp_err_t       ble_hid_set_slot(ble_hid_slot_t slot);
+esp_err_t ble_hid_init(const ble_hid_cfg_t* cfg);
+esp_err_t ble_hid_start(void);
+esp_err_t ble_hid_stop(void);
+esp_err_t ble_hid_set_slot(ble_hid_slot_t slot);
 ble_hid_state_t ble_hid_get_state(void);
 
 #ifdef __cplusplus
