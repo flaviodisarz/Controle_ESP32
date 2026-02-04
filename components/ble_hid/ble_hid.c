@@ -24,6 +24,9 @@
 #include "esp_hid_common.h"
 #include "esp_hidd.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #if !CONFIG_BT_ENABLED
 #error "Bluetooth desabilitado. Habilite em menuconfig: Component config -> Bluetooth"
 #endif
@@ -36,25 +39,43 @@
 #error "NimBLE está ligado. Desligue NimBLE e use Bluedroid pra este caminho."
 #endif
 
+
 static const char* TAG = "ble_hid";
 
 /* ===================== Report Map (o seu) ===================== */
+// Report ID que vamos usar pro Consumer Control
+#define HID_RPT_ID_CC_IN   0x03
+#define HID_CC_IN_RPT_LEN  1
+
 static const unsigned char mediaReportMap[] = {
-    0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01,
-    0x85, 0x03,
-    0x09, 0x02, 0xA1, 0x02,
-    0x05, 0x09, 0x19, 0x01, 0x29, 0x0A, 0x15, 0x01, 0x25, 0x0A, 0x75, 0x04, 0x95, 0x01, 0x81, 0x00,
-    0xC0,
-    0x05, 0x0C, 0x09, 0x86, 0x15, 0xFF, 0x25, 0x01, 0x75, 0x02, 0x95, 0x01, 0x81, 0x46,
-    0x09, 0xE9, 0x09, 0xEA, 0x15, 0x00, 0x75, 0x01, 0x95, 0x02, 0x81, 0x02,
-    0x09, 0xE2, 0x09, 0x30, 0x09, 0x83, 0x09, 0x81, 0x09, 0xB0, 0x09, 0xB1, 0x09, 0xB2, 0x09, 0xB3, 0x09, 0xB4, 0x09, 0xB5, 0x09, 0xB6, 0x09, 0xB7,
-    0x15, 0x01, 0x25, 0x0C, 0x75, 0x04, 0x95, 0x01, 0x81, 0x00,
-    0x09, 0x80, 0xA1, 0x02,
-    0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x01, 0x25, 0x03, 0x75, 0x02, 0x81, 0x00,
-    0xC0,
-    0x81, 0x03,
-    0xC0
+    0x05, 0x0C,        // Usage Page (Consumer)
+    0x09, 0x01,        // Usage (Consumer Control)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, HID_RPT_ID_CC_IN,   //   Report ID (3)
+
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+
+    // 6 botões (1 bit cada)
+    0x95, 0x06,        //   Report Count (6)
+    0x09, 0xE9,        //   Usage (Volume Increment)
+    0x09, 0xEA,        //   Usage (Volume Decrement)
+    0x09, 0xE2,        //   Usage (Mute)
+    0x09, 0xB6,        //   Usage (Scan Previous Track)
+    0x09, 0xCD,        //   Usage (Play/Pause)
+    0x09, 0xB5,        //   Usage (Scan Next Track)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
+
+    // padding até fechar 1 byte
+    0x95, 0x02,        //   Report Count (2)
+    0x81, 0x03,        //   Input (Const,Var,Abs)
+
+    0xC0               // End Collection
 };
+
+
+
 
 
 static void setup_security_params(void)
@@ -753,4 +774,36 @@ esp_err_t ble_hid_set_slot(ble_hid_slot_t slot)
 ble_hid_state_t ble_hid_get_state(void)
 {
     return s_state;
+}
+static uint8_t cc_mask_for_key(ble_hid_cc_t key)
+{
+    switch (key) {
+        case BLE_HID_CC_VOL_UP:      return (1u << 0);
+        case BLE_HID_CC_VOL_DOWN:    return (1u << 1);
+        case BLE_HID_CC_MUTE:        return (1u << 2);
+        case BLE_HID_CC_PREV:        return (1u << 3);
+        case BLE_HID_CC_PLAY_PAUSE:  return (1u << 4);
+        case BLE_HID_CC_NEXT:        return (1u << 5);
+        default: return 0;
+    }
+}
+
+esp_err_t ble_hid_send_cc(ble_hid_cc_t key)
+{
+    if (s_state != BLE_HID_STATE_CONNECTED || !s_hid) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    uint8_t m = cc_mask_for_key(key);
+    if (!m) return ESP_ERR_INVALID_ARG;
+
+    // press (1 byte)
+    esp_err_t err = esp_hidd_dev_input_set(s_hid, 0, HID_RPT_ID_CC_IN, &m, HID_CC_IN_RPT_LEN);
+    if (err != ESP_OK) return err;
+
+    vTaskDelay(pdMS_TO_TICKS(15));
+
+    // release (zera 1 byte)
+    uint8_t z = 0;
+    return esp_hidd_dev_input_set(s_hid, 0, HID_RPT_ID_CC_IN, &z, HID_CC_IN_RPT_LEN);
 }

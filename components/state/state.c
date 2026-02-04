@@ -30,9 +30,12 @@ static const char* TAG = "state";
 #define SLOT_A 0
 #define SLOT_B 1
 
+
 // Persistência em deep sleep
 RTC_DATA_ATTR static uint8_t s_slot_rtc = SLOT_A;
 RTC_DATA_ATTR static uint8_t s_mode_rtc = APP_MODE_MEDIA;
+
+static void media_cc(ble_hid_cc_t key, const char* label);
 
 // runtime
 static app_mode_t s_mode = APP_MODE_MEDIA;
@@ -318,7 +321,7 @@ static void media_toggle_slot(void)
     // se estava conectado, derruba antes (pra não “travar” e exigir reset)
     if (ble_hid_get_state() == BLE_HID_STATE_CONNECTED) {
         ESP_LOGW(TAG, "Estava conectado: parando BLE pra trocar slot");
-        ESP_ERROR_CHECK(ble_hid_stop());
+        /*ESP_ERROR_CHECK(ble_hid_stop());*/
         vTaskDelay(pdMS_TO_TICKS(150));
     }
 
@@ -327,6 +330,8 @@ static void media_toggle_slot(void)
 
     led_blink_rgb(0, 80, 255, (new_slot == BLE_HID_SLOT_B) ? 3 : 2, 60, 60);
 }
+
+
 
 static void toggle_mode(void)
 {
@@ -430,15 +435,16 @@ static void enter_light_sleep(const char* why)
 // ================== handlers ==================
 static void handle_media_short(uint8_t id)
 {
+    // Se não tá conectado, não manda nada (só log)
     switch (id) {
         case 1: enter_light_sleep("BTN1 curto"); break;
-        case 2: ESP_LOGI(TAG, "MEDIA: VOL+"); break;
-        case 3: ESP_LOGI(TAG, "MEDIA: MUTE"); break;
-        case 4: ESP_LOGI(TAG, "MEDIA: PREV"); break;
-        case 5: ESP_LOGI(TAG, "MEDIA: PLAY/PAUSE"); break;
-        case 6: ESP_LOGI(TAG, "MEDIA: NEXT"); break;
+        case 2: media_cc(BLE_HID_CC_VOL_UP,     "VOL+"); break;
+        case 3: media_cc(BLE_HID_CC_MUTE,       "MUTE"); break;
+        case 4: media_cc(BLE_HID_CC_PREV,       "PREV"); break;
+        case 5: media_cc(BLE_HID_CC_PLAY_PAUSE, "PLAY/PAUSE"); break;
+        case 6: media_cc(BLE_HID_CC_NEXT,       "NEXT"); break;
         case 7: media_toggle_slot(); break;
-        case 8: ESP_LOGI(TAG, "MEDIA: VOL-"); break;
+        case 8: media_cc(BLE_HID_CC_VOL_DOWN,   "VOL-"); break;
         default: ESP_LOGW(TAG, "MEDIA: id invalido=%u", (unsigned)id); break;
     }
 }
@@ -479,7 +485,7 @@ static void state_task(void* arg)
 
         if (s_sleep_lock) continue;
 
-        if (in->id >= 1 && in->id <= 8) {
+        if (in->id >= 1 && in->id <= 9) {
             if (in->type == INPUT_EV_DOWN || in->type == INPUT_EV_SHORT || in->type == INPUT_EV_LONG) {
                 restart_idle_timer();
             }
@@ -589,4 +595,25 @@ bool state_post_input(const input_event_t* ev)
     sev.in = *ev;
 
     return (xQueueSend(s_q, &sev, 0) == pdTRUE);
+}
+
+static void media_cc(ble_hid_cc_t key, const char* label)
+{
+    if (s_sleep_lock) return;
+    if (s_mode != APP_MODE_MEDIA) return;
+
+    ensure_ble_inited();
+
+    if (!ble_hid_is_connected()) {
+        ESP_LOGW(TAG, "MEDIA: %s (ignorado - BLE nao conectado)", label);
+        return;
+    }
+
+    esp_err_t err = ble_hid_send_cc(key);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "MEDIA: %s (falhou: %s)", label, esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI(TAG, "MEDIA: %s", label);
 }

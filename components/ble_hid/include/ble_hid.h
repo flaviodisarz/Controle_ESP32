@@ -1,7 +1,8 @@
 #pragma once
 
-#include "esp_err.h"
 #include <stdint.h>
+#include <stdbool.h>
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,11 +34,27 @@ typedef struct {
     void* user;                       // ctx do callback
 } ble_hid_cfg_t;
 
+typedef enum {
+    BLE_HID_CC_VOL_UP = 0,
+    BLE_HID_CC_VOL_DOWN,
+    BLE_HID_CC_MUTE,
+    BLE_HID_CC_PREV,
+    BLE_HID_CC_PLAY_PAUSE,
+    BLE_HID_CC_NEXT,
+} ble_hid_cc_t;
+
 esp_err_t ble_hid_init(const ble_hid_cfg_t* cfg);
 esp_err_t ble_hid_start(void);
 esp_err_t ble_hid_stop(void);
 esp_err_t ble_hid_set_slot(ble_hid_slot_t slot);
+
 ble_hid_state_t ble_hid_get_state(void);
+static inline bool ble_hid_is_connected(void) {
+    return ble_hid_get_state() == BLE_HID_STATE_CONNECTED;
+}
+
+// ✅ Etapa 2.2: press + release via o teu report map (1 byte / 6 bits)
+esp_err_t ble_hid_send_cc(ble_hid_cc_t key);
 
 #ifdef __cplusplus
 }
