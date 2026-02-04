@@ -311,7 +311,6 @@ static void media_toggle_slot(void)
 
     s_slot = (s_slot == SLOT_A) ? SLOT_B : SLOT_A;
     persist_state();
-
     ensure_ble_inited();
 
     ble_hid_slot_t new_slot = (s_slot == SLOT_B) ? BLE_HID_SLOT_B : BLE_HID_SLOT_A;
@@ -321,7 +320,7 @@ static void media_toggle_slot(void)
     // se estava conectado, derruba antes (pra não “travar” e exigir reset)
     if (ble_hid_get_state() == BLE_HID_STATE_CONNECTED) {
         ESP_LOGW(TAG, "Estava conectado: parando BLE pra trocar slot");
-        /*ESP_ERROR_CHECK(ble_hid_stop());*/
+        ESP_ERROR_CHECK(ble_hid_stop());
         vTaskDelay(pdMS_TO_TICKS(150));
     }
 
