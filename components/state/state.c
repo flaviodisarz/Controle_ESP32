@@ -249,8 +249,7 @@ static void on_ble_evt(ble_hid_evt_t evt, void* user)
             break;
     }
 }
-// forward declaration (pra não dar "on_ble_evt undeclared")
-static void on_ble_evt(ble_hid_evt_t evt, void* user);
+
 // ================== BLE init ==================
 static void ensure_ble_inited(void)
 {
@@ -556,6 +555,7 @@ void state_start(void)
     if (s_mode == APP_MODE_MEDIA) {
         ensure_ble_inited();
         ESP_ERROR_CHECK(ble_hid_start());
+        ble_hid_start();
     }
 }
 
