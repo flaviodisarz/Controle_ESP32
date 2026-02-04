@@ -38,6 +38,7 @@ RTC_DATA_ATTR static uint8_t s_mode_rtc = APP_MODE_MEDIA;
 static app_mode_t s_mode = APP_MODE_MEDIA;
 static uint8_t    s_slot = SLOT_A;
 static state_config_t s_cfg;
+static int64_t s_ignore_adv_until_us = 0;
 
 static QueueHandle_t s_q = NULL;
 static esp_timer_handle_t s_idle_timer = NULL;
@@ -229,19 +230,39 @@ static void on_ble_evt(ble_hid_evt_t evt, void* user)
 
     ESP_LOGI(TAG, "BLE EVT = %d", (int)evt);
 
-    // evita acumular sequência
-    led_seq_stop();
+    int64_t now = esp_timer_get_time();
 
     switch (evt) {
         case BLE_HID_EVT_ADVERTISING:
+            // ✅ Se acabou de desconectar, deixa o laranja aparecer.
+            if (now < s_ignore_adv_until_us) {
+                ESP_LOGI(TAG, "ADV ignored (waiting orange animation)");
+                return;
+            }
+
+            // ✅ Se tem animação rodando (laranja/conectou), não atropela
+            if (s_led_seq_task) return;
+
             led_pulse_rgb(0, 80, 255, 1200);
             break;
 
         case BLE_HID_EVT_CONNECTED:
+            // conexão venceu qualquer “cooldown”
+            s_ignore_adv_until_us = 0;
+
+            // ✅ pode matar sequências antigas e tocar a de conectado
+            led_seq_stop();
             xTaskCreate(led_seq_connected_task, "led_conn", 2048, NULL, 5, &s_led_seq_task);
             break;
 
         case BLE_HID_EVT_DISCONNECTED:
+            // ✅ mata seq anterior e roda o laranja
+            led_seq_stop();
+
+            // 🔥 bloqueia o ADV por tempo suficiente pro laranja aparecer.
+            // teu laranja: (520+220)*2 + 50 ≈ 1510ms
+            s_ignore_adv_until_us = now + 2000000; // 2s
+
             xTaskCreate(led_seq_disconnected_task, "led_disc", 2048, NULL, 5, &s_led_seq_task);
             break;
 
@@ -249,6 +270,7 @@ static void on_ble_evt(ble_hid_evt_t evt, void* user)
             break;
     }
 }
+
 
 // ================== BLE init ==================
 static void ensure_ble_inited(void)
@@ -555,7 +577,6 @@ void state_start(void)
     if (s_mode == APP_MODE_MEDIA) {
         ensure_ble_inited();
         ESP_ERROR_CHECK(ble_hid_start());
-        ble_hid_start();
     }
 }
 

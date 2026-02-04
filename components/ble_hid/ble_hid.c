@@ -56,6 +56,45 @@ static const unsigned char mediaReportMap[] = {
     0xC0
 };
 
+
+static void setup_security_params(void)
+{
+    // Bonding sem MITM (sem teclado/sem tela)
+    esp_ble_auth_req_t auth_req = ESP_LE_AUTH_BOND;
+    esp_ble_io_cap_t iocap = ESP_IO_CAP_NONE;
+
+    uint8_t key_size = 16;
+    uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+    uint8_t rsp_key  = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+
+    esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(auth_req));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(iocap));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &key_size, sizeof(key_size));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(init_key));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(rsp_key));
+
+    ESP_LOGI(TAG, "security params set (BOND, IOCAP_NONE)");
+}
+
+static void request_conn_params(const esp_bd_addr_t bda)
+{
+    esp_ble_conn_update_params_t cp = {0};
+    memcpy(cp.bda, bda, sizeof(esp_bd_addr_t));
+
+    cp.min_int = 12;   // 15ms
+    cp.max_int = 24;   // 30ms
+    cp.latency = 0;
+
+    // 🔥 aqui é o pulo do gato pro “desconectou e eu sei rápido”
+    // unidade = 10ms. 400 = 4s. Se quiser mais rápido depois, testa 300 (3s).
+    cp.timeout = 400;
+
+    esp_err_t e = esp_ble_gap_update_conn_params(&cp);
+    ESP_LOGI(TAG, "update_conn_params => %s (timeout=%ums)", esp_err_to_name(e), (unsigned)(cp.timeout * 10));
+}
+
+
+
 static esp_hid_raw_report_map_t s_report_maps[] = {
     { .data = mediaReportMap, .len = sizeof(mediaReportMap) }
 };
@@ -395,6 +434,29 @@ static void gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
         apply_pending_slot_if_any();
         try_start_adv();
         break;
+    case ESP_GAP_BLE_SEC_REQ_EVT:
+        // “sim, pode iniciar segurança”
+        ESP_LOGI(TAG, "SEC_REQ -> accept");
+        esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
+        break;
+
+    case ESP_GAP_BLE_NC_REQ_EVT:
+        // Numeric Comparison: precisa confirmar dos dois lados
+        ESP_LOGW(TAG, "NC_REQ passkey=%06lu -> auto-accept",
+                (unsigned long)param->ble_security.key_notif.passkey);
+        esp_ble_confirm_reply(param->ble_security.key_notif.bd_addr, true);
+        break;
+
+    case ESP_GAP_BLE_AUTH_CMPL_EVT:
+        ESP_LOGI(TAG, "AUTH_CMPL success=%d addr=%02X:%02X:%02X:%02X:%02X:%02X",
+                param->ble_security.auth_cmpl.success,
+                param->ble_security.auth_cmpl.bd_addr[0],
+                param->ble_security.auth_cmpl.bd_addr[1],
+                param->ble_security.auth_cmpl.bd_addr[2],
+                param->ble_security.auth_cmpl.bd_addr[3],
+                param->ble_security.auth_cmpl.bd_addr[4],
+                param->ble_security.auth_cmpl.bd_addr[5]);
+        break;
 
     default:
         break;
@@ -410,20 +472,33 @@ static void gatts_wrapper_cb(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if,
 
     switch (event) {
     case ESP_GATTS_CONNECT_EVT:
-        // captura peer (pra poder desconectar depois)
+        // se já capturou o peer nessa conexão, ignora duplicados
+        if (s_peer_valid) {
+            // opcional: ESP_LOGD(TAG, "CONNECT duplicate ignored");
+            break;
+        }
+
         s_peer_valid = true;
         s_peer_gatts_if = gatts_if;
         s_peer_conn_id = param->connect.conn_id;
         memcpy(s_peer_bda, param->connect.remote_bda, sizeof(esp_bd_addr_t));
+
         ESP_LOGI(TAG, "GATTS CONNECT: conn_id=%u bda=%02X:%02X:%02X:%02X:%02X:%02X",
-                 (unsigned)s_peer_conn_id,
-                 s_peer_bda[0], s_peer_bda[1], s_peer_bda[2], s_peer_bda[3], s_peer_bda[4], s_peer_bda[5]);
+                (unsigned)s_peer_conn_id,
+                s_peer_bda[0], s_peer_bda[1], s_peer_bda[2], s_peer_bda[3], s_peer_bda[4], s_peer_bda[5]);
+
+        request_conn_params(param->connect.remote_bda);
         break;
 
-    case ESP_GATTS_DISCONNECT_EVT:
-        ESP_LOGW(TAG, "GATTS DISCONNECT reason=%d", (int)param->disconnect.reason);
+
+    case ESP_GATTS_DISCONNECT_EVT: {
+        if (!s_peer_valid) break; // ignora duplicados
+        uint8_t r = (uint8_t)param->disconnect.reason;
+        ESP_LOGW(TAG, "GATTS DISCONNECT reason=%u", (unsigned)r);
         s_peer_valid = false;
+        on_disconnected_once(r);
         break;
+    }
 
     default:
         break;
@@ -494,6 +569,7 @@ static void on_connected_once(void)
 
 static void on_disconnected_once(uint8_t reason)
 {
+    if (s_state != BLE_HID_STATE_CONNECTED) return;
     ESP_LOGW(TAG, "Disconnected (reason=%u) userStop=%d", (unsigned)reason, (int)s_user_stop);
 
     emit_evt(BLE_HID_EVT_DISCONNECTED);
@@ -550,6 +626,8 @@ esp_err_t ble_hid_init(const ble_hid_cfg_t* cfg)
 
     ESP_ERROR_CHECK(bt_stack_init());
     ESP_ERROR_CHECK(esp_ble_gap_register_callback(gap_cb));
+    setup_security_params();
+
 
     if (!s_adv_retry_t) {
         const esp_timer_create_args_t tcfg = {
