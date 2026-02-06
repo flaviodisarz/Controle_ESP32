@@ -1,9 +1,9 @@
 #pragma once
 
 // Linhas (rows)
-#define PIN_ROW_0 6
+#define PIN_ROW_0 21
 #define PIN_ROW_1 7
-#define PIN_ROW_2 21
+#define PIN_ROW_2 6
 
 // Colunas (cols)
 #define PIN_COL_0 4
